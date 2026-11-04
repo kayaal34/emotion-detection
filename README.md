@@ -16,7 +16,7 @@ It automatically organizes raw pixel data into categorized folders (Angry, Happy
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/KULLANICIADIN/emotion-detection.git](https://github.com/KULLANICIADIN/emotion-detection.git)
+    git clone https://github.com/kayaal34/emotion-detection.git
     cd emotion-detection
     ```
 
@@ -28,15 +28,29 @@ It automatically organizes raw pixel data into categorized folders (Angry, Happy
 ## 🚀 How to Run
 
 ### Step 1: Prepare the Dataset
-First, organize the raw data into emotion-specific folders:
+Download `fer2013.csv` (FER2013) and convert it into emotion folders:
 ```bash
-python create_dataset.py
-This will create a data/ folder with sorted images.
+cd src
+python dataset_prepare.py --csv path/to/fer2013.csv
+```
+This creates `data/train/<emotion>/` and `data/test/<emotion>/` with 48x48 grayscale images.
+The csv's `Usage` column decides the split (`Training` goes to train, the rest to test).
 
-Step 2: Train the Model
-Train the CNN model using the processed images:
+### Step 2: Train the Model
+```bash
+python emotions.py --mode train
+```
+The weights are saved as `model.h5` and the accuracy/loss curves as `plot.png`.
 
-Bash
+### Step 3: Run on the Webcam
+```bash
+python emotions.py --mode display
+```
+Press `q` to quit. The face detector uses the Haar cascade shipped with `opencv-python`.
 
-python emotion_recognition.py --mode train
-The trained model weights will be saved as model.h5 upon completion.
+## 🧪 Tests
+The dataset preparation code has unit tests (they do not need TensorFlow):
+```bash
+pip install numpy pandas Pillow tqdm pytest
+python -m pytest -q
+```

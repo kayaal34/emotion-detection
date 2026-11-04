@@ -13,7 +13,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # command line argument
 ap = argparse.ArgumentParser()
-ap.add_argument("--mode",help="train/display")
+ap.add_argument("--mode", choices=["train", "display"], required=True, help="train/display")
 mode = ap.parse_args().mode
 
 # plots accuracy and loss curves
@@ -45,8 +45,6 @@ def plot_model_history(model_history):
 train_dir = 'data/train'
 val_dir = 'data/test'
 
-num_train = 28709
-num_val = 7178
 batch_size = 64
 num_epoch = 50
 
@@ -88,13 +86,13 @@ model.add(Dense(7, activation='softmax'))
 
 # If you want to train the same model or try other models, go for this
 if mode == "train":
-    model.compile(loss='categorical_crossentropy',optimizer=Adam(lr=0.0001, decay=1e-6),metrics=['accuracy'])
-    model_info = model.fit_generator(
+    model.compile(loss='categorical_crossentropy',optimizer=Adam(learning_rate=0.0001),metrics=['accuracy'])
+    model_info = model.fit(
             train_generator,
-            steps_per_epoch=num_train // batch_size,
+            steps_per_epoch=train_generator.samples // batch_size,
             epochs=num_epoch,
             validation_data=validation_generator,
-            validation_steps=num_val // batch_size)
+            validation_steps=validation_generator.samples // batch_size)
     plot_model_history(model_info)
     model.save_weights('model.h5')
 
@@ -108,14 +106,19 @@ elif mode == "display":
     # dictionary which assigns each label an emotion (alphabetical order)
     emotion_dict = {0: "Angry", 1: "Disgusted", 2: "Fearful", 3: "Happy", 4: "Neutral", 5: "Sad", 6: "Surprised"}
 
+    # Find haar cascade to draw bounding box around face (shipped with opencv-python)
+    facecasc = cv2.CascadeClassifier(os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
+    if facecasc.empty():
+        raise SystemExit("Could not load the face cascade")
+
     # start the webcam feed
     cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        raise SystemExit("Could not open the webcam")
     while True:
-        # Find haar cascade to draw bounding box around face
         ret, frame = cap.read()
         if not ret:
             break
-        facecasc = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = facecasc.detectMultiScale(gray,scaleFactor=1.3, minNeighbors=5)
 
@@ -123,7 +126,8 @@ elif mode == "display":
             cv2.rectangle(frame, (x, y-50), (x+w, y+h+10), (255, 0, 0), 2)
             roi_gray = gray[y:y + h, x:x + w]
             cropped_img = np.expand_dims(np.expand_dims(cv2.resize(roi_gray, (48, 48)), -1), 0)
-            prediction = model.predict(cropped_img)
+            # Training images are rescaled by 1/255, so the webcam crop must be too
+            prediction = model.predict(cropped_img / 255.0, verbose=0)
             maxindex = int(np.argmax(prediction))
             cv2.putText(frame, emotion_dict[maxindex], (x+20, y-60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
 

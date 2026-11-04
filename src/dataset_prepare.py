@@ -1,104 +1,67 @@
-import numpy as np
-import pandas as pd 
-from PIL import Image
-from tqdm import tqdm
+import argparse
 import os
 
-# convert string to integer
-def atoi(s):
-    n = 0
-    for i in s:
-        n = n*10 + ord(i) - ord("0")
-    return n
+import numpy as np
+import pandas as pd
+from PIL import Image
+from tqdm import tqdm
 
-# making folders
-outer_names = ['test','train']
-inner_names = ['angry', 'disgusted', 'fearful', 'happy', 'sad', 'surprised', 'neutral']
-os.makedirs('data', exist_ok=True)
-for outer_name in outer_names:
-    os.makedirs(os.path.join('data',outer_name), exist_ok=True)
-    for inner_name in inner_names:
-        os.makedirs(os.path.join('data',outer_name,inner_name), exist_ok=True)
+# FER2013 label order
+EMOTIONS = ['angry', 'disgusted', 'fearful', 'happy', 'sad', 'surprised', 'neutral']
+IMAGE_SIZE = 48
+# FER2013 has 28709 training rows; used when the csv has no "Usage" column
+TRAIN_ROWS = 28709
 
-# to keep count of each category
-angry = 0
-disgusted = 0
-fearful = 0
-happy = 0
-sad = 0
-surprised = 0
-neutral = 0
-angry_test = 0
-disgusted_test = 0
-fearful_test = 0
-happy_test = 0
-sad_test = 0
-surprised_test = 0
-neutral_test = 0
 
-df = pd.read_csv('D:\Masaüstü\fer2023.csv')
-mat = np.zeros((48,48),dtype=np.uint8)
-print("Saving images...")
+def pixels_to_image(pixels):
+    """Convert the space separated pixel string of one row to a 48x48 image"""
+    values = np.array(pixels.split(), dtype=np.uint8)
+    if values.size != IMAGE_SIZE * IMAGE_SIZE:
+        raise ValueError(f"expected {IMAGE_SIZE * IMAGE_SIZE} pixels, got {values.size}")
+    return Image.fromarray(values.reshape(IMAGE_SIZE, IMAGE_SIZE))
 
-# read the csv file line by line
-for i in tqdm(range(len(df))):
-    txt = df['pixels'][i]
-    words = txt.split()
-    
-    # the image size is 48x48
-    for j in range(2304):
-        xind = j // 48
-        yind = j % 48
-        mat[xind][yind] = atoi(words[j])
 
-    img = Image.fromarray(mat)
+def split_for(index, usage=None):
+    """Return "train" or "test" for a row"""
+    if isinstance(usage, str):
+        return 'train' if usage == 'Training' else 'test'
+    return 'train' if index < TRAIN_ROWS else 'test'
 
-    # train
-    if i < 28709:
-        if df['emotion'][i] == 0:
-            img.save('train/angry/im'+str(angry)+'.png')
-            angry += 1
-        elif df['emotion'][i] == 1:
-            img.save('train/disgusted/im'+str(disgusted)+'.png')
-            disgusted += 1
-        elif df['emotion'][i] == 2:
-            img.save('train/fearful/im'+str(fearful)+'.png')
-            fearful += 1
-        elif df['emotion'][i] == 3:
-            img.save('train/happy/im'+str(happy)+'.png')
-            happy += 1
-        elif df['emotion'][i] == 4:
-            img.save('train/sad/im'+str(sad)+'.png')
-            sad += 1
-        elif df['emotion'][i] == 5:
-            img.save('train/surprised/im'+str(surprised)+'.png')
-            surprised += 1
-        elif df['emotion'][i] == 6:
-            img.save('train/neutral/im'+str(neutral)+'.png')
-            neutral += 1
 
-    # test
-    else:
-        if df['emotion'][i] == 0:
-            img.save('test/angry/im'+str(angry_test)+'.png')
-            angry_test += 1
-        elif df['emotion'][i] == 1:
-            img.save('test/disgusted/im'+str(disgusted_test)+'.png')
-            disgusted_test += 1
-        elif df['emotion'][i] == 2:
-            img.save('test/fearful/im'+str(fearful_test)+'.png')
-            fearful_test += 1
-        elif df['emotion'][i] == 3:
-            img.save('test/happy/im'+str(happy_test)+'.png')
-            happy_test += 1
-        elif df['emotion'][i] == 4:
-            img.save('test/sad/im'+str(sad_test)+'.png')
-            sad_test += 1
-        elif df['emotion'][i] == 5:
-            img.save('test/surprised/im'+str(surprised_test)+'.png')
-            surprised_test += 1
-        elif df['emotion'][i] == 6:
-            img.save('test/neutral/im'+str(neutral_test)+'.png')
-            neutral_test += 1
+def make_folders(out_dir):
+    for split in ('train', 'test'):
+        for emotion in EMOTIONS:
+            os.makedirs(os.path.join(out_dir, split, emotion), exist_ok=True)
 
-print("Done!")
+
+def prepare(df, out_dir='data'):
+    """Save every row of the dataframe as a png in out_dir/<split>/<emotion>/"""
+    make_folders(out_dir)
+    counts = {}
+    usages = df['Usage'] if 'Usage' in df.columns else [None] * len(df)
+
+    for i, (emotion, pixels, usage) in enumerate(tqdm(zip(df['emotion'], df['pixels'], usages), total=len(df))):
+        split = split_for(i, usage)
+        name = EMOTIONS[int(emotion)]
+        key = (split, name)
+        number = counts.get(key, 0)
+        pixels_to_image(pixels).save(os.path.join(out_dir, split, name, f'im{number}.png'))
+        counts[key] = number + 1
+    return counts
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--csv", default="fer2013.csv", help="path to fer2013.csv")
+    ap.add_argument("--out", default="data", help="output folder")
+    args = ap.parse_args()
+
+    print("Saving images...")
+    counts = prepare(pd.read_csv(args.csv), args.out)
+    for (split, name), number in sorted(counts.items()):
+        print(f"{split}/{name}: {number}")
+    print("Done!")
+
+
+if __name__ == '__main__':
+    main()
