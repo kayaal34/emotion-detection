@@ -45,8 +45,6 @@ def plot_model_history(model_history):
 train_dir = 'data/train'
 val_dir = 'data/test'
 
-num_train = 28709
-num_val = 7178
 batch_size = 64
 num_epoch = 50
 
@@ -88,13 +86,13 @@ model.add(Dense(7, activation='softmax'))
 
 # If you want to train the same model or try other models, go for this
 if mode == "train":
-    model.compile(loss='categorical_crossentropy',optimizer=Adam(lr=0.0001, decay=1e-6),metrics=['accuracy'])
-    model_info = model.fit_generator(
+    model.compile(loss='categorical_crossentropy',optimizer=Adam(learning_rate=0.0001),metrics=['accuracy'])
+    model_info = model.fit(
             train_generator,
-            steps_per_epoch=num_train // batch_size,
+            steps_per_epoch=train_generator.samples // batch_size,
             epochs=num_epoch,
             validation_data=validation_generator,
-            validation_steps=num_val // batch_size)
+            validation_steps=validation_generator.samples // batch_size)
     plot_model_history(model_info)
     model.save_weights('model.h5')
 
