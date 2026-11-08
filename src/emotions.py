@@ -202,7 +202,8 @@ def parse_args(argv=None):
     ap.add_argument("--mode", choices=["train", "display", "image"], required=True)
     ap.add_argument("--image", help="photo to analyse in image mode")
     ap.add_argument("--data", default="data", help="folder with train/ and test/ (default: data)")
-    ap.add_argument("--weights", default="model.h5", help="weights file to save or load (default: model.h5)")
+    ap.add_argument("--weights", default="model.weights.h5",
+                    help="weights file to save or load (default: model.weights.h5)")
     ap.add_argument("--epochs", type=int, default=50)
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--lr", type=float, default=0.0001, help="learning rate (default: 0.0001)")
