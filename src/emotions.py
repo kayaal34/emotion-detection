@@ -55,8 +55,18 @@ def build_model():
     return model
 
 
-def make_generator(directory, batch_size, shuffle=True):
-    datagen = ImageDataGenerator(rescale=1./255)
+def make_generator(directory, batch_size, shuffle=True, augment=False):
+    if augment:
+        # Small random changes so the model does not memorise the training faces
+        datagen = ImageDataGenerator(
+            rescale=1./255,
+            rotation_range=10,
+            width_shift_range=0.1,
+            height_shift_range=0.1,
+            zoom_range=0.1,
+            horizontal_flip=True)
+    else:
+        datagen = ImageDataGenerator(rescale=1./255)
     return datagen.flow_from_directory(
         directory,
         target_size=(IMAGE_SIZE, IMAGE_SIZE),
@@ -67,7 +77,8 @@ def make_generator(directory, batch_size, shuffle=True):
 
 
 def train(args):
-    train_generator = make_generator(os.path.join(args.data, 'train'), args.batch_size)
+    train_generator = make_generator(os.path.join(args.data, 'train'), args.batch_size,
+                                     augment=not args.no_augment)
     validation_generator = make_generator(os.path.join(args.data, 'test'), args.batch_size, shuffle=False)
 
     model = build_model()
@@ -128,6 +139,7 @@ def parse_args(argv=None):
     ap.add_argument("--weights", default="model.h5", help="weights file to save or load (default: model.h5)")
     ap.add_argument("--epochs", type=int, default=50)
     ap.add_argument("--batch-size", type=int, default=64)
+    ap.add_argument("--no-augment", action="store_true", help="train without data augmentation")
     ap.add_argument("--camera", type=int, default=0, help="webcam index (default: 0)")
     return ap.parse_args(argv)
 
