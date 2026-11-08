@@ -7,6 +7,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import MaxNLocator
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from tensorflow.keras.layers import Conv2D, Dense, Dropout, Flatten, MaxPooling2D
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.optimizers import Adam
@@ -82,14 +83,22 @@ def train(args):
     validation_generator = make_generator(os.path.join(args.data, 'test'), args.batch_size, shuffle=False)
 
     model = build_model()
-    model.compile(loss='categorical_crossentropy', optimizer=Adam(learning_rate=0.0001), metrics=['accuracy'])
+    model.compile(loss='categorical_crossentropy', optimizer=Adam(learning_rate=args.lr), metrics=['accuracy'])
+    callbacks = [
+        # Keep the weights of the best epoch, not the last one
+        ModelCheckpoint(args.weights, monitor='val_accuracy', save_best_only=True,
+                        save_weights_only=True, verbose=1),
+        ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=1e-6, verbose=1),
+        EarlyStopping(monitor='val_loss', patience=args.patience, restore_best_weights=True, verbose=1),
+    ]
     model_info = model.fit(
         train_generator,
         epochs=args.epochs,
-        validation_data=validation_generator)
-    # Save the weights first so a plotting problem can not lose them
-    model.save_weights(args.weights)
+        validation_data=validation_generator,
+        callbacks=callbacks)
     plot_model_history(model_info)
+    loss, accuracy = model.evaluate(validation_generator, verbose=0)
+    print(f"Validation accuracy: {accuracy:.3f} (loss {loss:.3f}), weights saved to {args.weights}")
 
 
 def display(args):
@@ -139,6 +148,9 @@ def parse_args(argv=None):
     ap.add_argument("--weights", default="model.h5", help="weights file to save or load (default: model.h5)")
     ap.add_argument("--epochs", type=int, default=50)
     ap.add_argument("--batch-size", type=int, default=64)
+    ap.add_argument("--lr", type=float, default=0.0001, help="learning rate (default: 0.0001)")
+    ap.add_argument("--patience", type=int, default=8,
+                    help="stop after this many epochs without a better val_loss (default: 8)")
     ap.add_argument("--no-augment", action="store_true", help="train without data augmentation")
     ap.add_argument("--camera", type=int, default=0, help="webcam index (default: 0)")
     return ap.parse_args(argv)
