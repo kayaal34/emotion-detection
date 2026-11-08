@@ -104,18 +104,61 @@ def train(args):
     print(f"Validation accuracy: {accuracy:.3f} (loss {loss:.3f}), weights saved to {args.weights}")
 
 
+# BGR box colour for each emotion
+COLORS = {
+    "Angry": (0, 0, 255), "Disgusted": (0, 128, 0), "Fearful": (128, 0, 128),
+    "Happy": (0, 215, 255), "Neutral": (200, 200, 200), "Sad": (255, 0, 0),
+    "Surprised": (0, 165, 255),
+}
+
+
+def load_face_detector():
+    # Haar cascade shipped with opencv-python
+    facecasc = cv2.CascadeClassifier(os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
+    if facecasc.empty():
+        raise SystemExit("Could not load the face cascade")
+    return facecasc
+
+
+def preprocess_faces(gray, faces):
+    """Crop, resize and scale the faces like the training images (N, 48, 48, 1)"""
+    crops = [cv2.resize(gray[y:y + h, x:x + w], (IMAGE_SIZE, IMAGE_SIZE)) for (x, y, w, h) in faces]
+    return np.expand_dims(np.array(crops, dtype=np.float32) / 255.0, -1)
+
+
+def predict_faces(model, facecasc, frame):
+    """Return (box, emotion, confidence) for every face in a BGR frame"""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = facecasc.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5, minSize=(40, 40))
+    if len(faces) == 0:
+        return []
+    # One predict call for all faces instead of one per face
+    predictions = model.predict(preprocess_faces(gray, faces), verbose=0)
+    return [(tuple(int(v) for v in box), EMOTIONS[int(np.argmax(p))], float(np.max(p)))
+            for box, p in zip(faces, predictions)]
+
+
+def draw_results(frame, results):
+    for (x, y, w, h), emotion, confidence in results:
+        color = COLORS[emotion]
+        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+        label = f"{emotion} {confidence:.0%}"
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+        top = max(y - th - 10, 0)
+        cv2.rectangle(frame, (x, top), (x + tw + 10, top + th + 10), color, -1)
+        cv2.putText(frame, label, (x + 5, top + th + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                    (0, 0, 0), 2, cv2.LINE_AA)
+    return frame
+
+
 def display(args):
     """Show the predicted emotion on each face in the webcam feed"""
     model = build_model()
     model.load_weights(args.weights)
+    facecasc = load_face_detector()
 
     # prevents openCL usage and unnecessary logging messages
     cv2.ocl.setUseOpenCL(False)
-
-    # Find haar cascade to draw bounding box around face (shipped with opencv-python)
-    facecasc = cv2.CascadeClassifier(os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
-    if facecasc.empty():
-        raise SystemExit("Could not load the face cascade")
 
     cap = cv2.VideoCapture(args.camera)
     if not cap.isOpened():
@@ -124,19 +167,10 @@ def display(args):
         ret, frame = cap.read()
         if not ret:
             break
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = facecasc.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
-
-        for (x, y, w, h) in faces:
-            cv2.rectangle(frame, (x, y-50), (x+w, y+h+10), (255, 0, 0), 2)
-            roi_gray = gray[y:y + h, x:x + w]
-            cropped_img = np.expand_dims(np.expand_dims(cv2.resize(roi_gray, (IMAGE_SIZE, IMAGE_SIZE)), -1), 0)
-            # Training images are rescaled by 1/255, so the webcam crop must be too
-            prediction = model.predict(cropped_img / 255.0, verbose=0)
-            maxindex = int(np.argmax(prediction))
-            cv2.putText(frame, EMOTIONS[maxindex], (x+20, y-60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-
-        cv2.imshow('Video', cv2.resize(frame, (1600, 960), interpolation=cv2.INTER_CUBIC))
+        # Mirror the image so it moves like a mirror
+        frame = cv2.flip(frame, 1)
+        draw_results(frame, predict_faces(model, facecasc, frame))
+        cv2.imshow('Emotion detection (q to quit)', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
