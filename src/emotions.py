@@ -178,9 +178,29 @@ def display(args):
     cv2.destroyAllWindows()
 
 
+def predict_image(args):
+    """Print the emotions found in a photo and save a copy with the boxes drawn"""
+    frame = cv2.imread(args.image)
+    if frame is None:
+        raise SystemExit(f"Could not read {args.image}")
+    model = build_model()
+    model.load_weights(args.weights)
+    results = predict_faces(model, load_face_detector(), frame)
+    if not results:
+        print("No face found")
+        return
+    for (x, y, w, h), emotion, confidence in results:
+        print(f"Face at ({x}, {y}, {w}x{h}): {emotion} {confidence:.0%}")
+    root, ext = os.path.splitext(args.image)
+    out = f"{root}_emotions{ext}"
+    cv2.imwrite(out, draw_results(frame, results))
+    print(f"Saved {out}")
+
+
 def parse_args(argv=None):
-    ap = argparse.ArgumentParser(description="Train the emotion CNN or run it on the webcam")
-    ap.add_argument("--mode", choices=["train", "display"], required=True)
+    ap = argparse.ArgumentParser(description="Train the emotion CNN or run it on the webcam or a photo")
+    ap.add_argument("--mode", choices=["train", "display", "image"], required=True)
+    ap.add_argument("--image", help="photo to analyse in image mode")
     ap.add_argument("--data", default="data", help="folder with train/ and test/ (default: data)")
     ap.add_argument("--weights", default="model.h5", help="weights file to save or load (default: model.h5)")
     ap.add_argument("--epochs", type=int, default=50)
@@ -195,8 +215,12 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
+    if args.mode == "image" and not args.image:
+        raise SystemExit("--mode image needs --image path/to/photo.jpg")
     if args.mode == "train":
         train(args)
+    elif args.mode == "image":
+        predict_image(args)
     else:
         display(args)
 
